@@ -1,34 +1,76 @@
-.App-logo {
-    height: 40vmin;
-    pointer-events: none;
+/* Swiss / High-Contrast fintech dashboard styles */
+
+.App {
+  font-family: "Plus Jakarta Sans", system-ui, sans-serif;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-    .App-logo {
-        animation: App-logo-spin infinite 20s linear;
-    }
+.font-display {
+  font-family: "Bricolage Grotesque", "Plus Jakarta Sans", sans-serif;
+  letter-spacing: -0.02em;
 }
 
-.App-header {
-    background-color: #0f0f10;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    font-size: calc(10px + 2vmin);
-    color: white;
+.font-mono-tab {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
 }
 
-.App-link {
-    color: #61dafb;
+/* Pulsing LIVE dot */
+@keyframes pulseDot {
+  0% { box-shadow: 0 0 0 0 rgba(0, 200, 83, 0.6); }
+  70% { box-shadow: 0 0 0 8px rgba(0, 200, 83, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(0, 200, 83, 0); }
 }
 
-@keyframes App-logo-spin {
-    from {
-        transform: rotate(0deg);
-    }
-    to {
-        transform: rotate(360deg);
-    }
+.live-dot {
+  animation: pulseDot 1.6s infinite;
+}
+
+/* Price flash animations */
+@keyframes flashGreen {
+  0% { background-color: rgba(0, 200, 83, 0.22); }
+  100% { background-color: transparent; }
+}
+@keyframes flashRed {
+  0% { background-color: rgba(255, 59, 48, 0.22); }
+  100% { background-color: transparent; }
+}
+.flash-up { animation: flashGreen 900ms ease-out 1; }
+.flash-down { animation: flashRed 900ms ease-out 1; }
+
+/* Dashed grid for data-heavy sections */
+.grid-bg {
+  background-image:
+    linear-gradient(to right, rgba(17,24,39,0.04) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(17,24,39,0.04) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+/* Subtle lift on card hover */
+.card-lift {
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+.card-lift:hover {
+  transform: translateY(-2px);
+  border-color: #d1d5db;
+}
+
+/* Selection accent */
+::selection {
+  background: #002FA7;
+  color: #fff;
+}
+
+/* Klein blue accent underline for H1 */
+.title-underline {
+  position: relative;
+  display: inline-block;
+}
+.title-underline::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -6px;
+  width: 44px;
+  height: 4px;
+  background: #FF3B30;
 }
