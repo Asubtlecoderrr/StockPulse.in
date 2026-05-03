@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { RefreshCw, Activity } from "lucide-react";
+import { RefreshCw, Activity, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 function fmtIstTime(iso) {
@@ -14,7 +14,7 @@ function fmtIstTime(iso) {
   });
 }
 
-export default function Header({ marketStatus, onRefresh, refreshing }) {
+export default function Header({ marketStatus, onRefresh, refreshing, aiHealth }) {
   const [now, setNow] = useState(new Date());
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);
@@ -69,6 +69,21 @@ export default function Header({ marketStatus, onRefresh, refreshing }) {
             {isOpen ? "Market Open" : "Market Closed"}
             {weekday ? <span className="hidden md:inline text-[10px] text-gray-400 font-mono-tab">· {weekday.slice(0,3).toUpperCase()}</span> : null}
           </div>
+
+          {aiHealth ? (
+            <div
+              className={`hidden md:inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold tracking-wider uppercase border ${
+                aiHealth.reachable && aiHealth.model_ready
+                  ? "bg-[#002FA7]/5 text-[#002FA7] border-[#002FA7]/30"
+                  : "bg-gray-50 text-gray-500 border-gray-200"
+              }`}
+              data-testid="ai-status-pill"
+              title={aiHealth.reachable && aiHealth.model_ready ? `AI ready · ${aiHealth.model}` : `AI offline · ${aiHealth.reason || "model not pulled"}`}
+            >
+              <Sparkles className="w-3 h-3" strokeWidth={2.5} />
+              {aiHealth.reachable && aiHealth.model_ready ? "AI" : "AI Off"}
+            </div>
+          ) : null}
 
           <Button
             onClick={onRefresh}

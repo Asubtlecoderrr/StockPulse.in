@@ -6,6 +6,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { validateThreshold, toneClass, tonePillClass } from "@/lib/thresholdValidator";
+import SentimentChip from "@/components/alert/SentimentChip";
 
 const formatINR = (n) =>
   n == null ? "—" : new Intl.NumberFormat("en-IN", { maximumFractionDigits: 2 }).format(n);
@@ -46,7 +47,7 @@ function PriceCell({ item }) {
   );
 }
 
-function Row({ item, onUpdate, onDelete }) {
+function Row({ item, onUpdate, onDelete, aiOk }) {
   const [editing, setEditing] = useState(false);
   const [threshold, setThreshold] = useState(String(item.threshold));
   const [alertType, setAlertType] = useState(item.alert_type);
@@ -96,8 +97,11 @@ function Row({ item, onUpdate, onDelete }) {
       data-testid={`watchlist-row-${bareSymbol}`}
     >
       <td className="py-4 pr-4">
-        <div className="flex flex-col">
-          <span className="font-mono-tab font-bold text-sm text-[#111827]">{bareSymbol}</span>
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-center gap-2">
+            <span className="font-mono-tab font-bold text-sm text-[#111827]">{bareSymbol}</span>
+            <SentimentChip symbol={item.symbol} aiOk={aiOk} />
+          </div>
           <span className="text-xs text-gray-500 truncate max-w-[220px]">{item.name}</span>
         </div>
       </td>
@@ -227,7 +231,7 @@ function Row({ item, onUpdate, onDelete }) {
   );
 }
 
-export default function Watchlist({ items, onUpdate, onDelete }) {
+export default function Watchlist({ items, onUpdate, onDelete, aiOk }) {
   if (!items || items.length === 0) {
     return (
       <div className="border border-dashed border-gray-300 rounded-sm p-10 text-center" data-testid="watchlist-empty">
@@ -264,7 +268,7 @@ export default function Watchlist({ items, onUpdate, onDelete }) {
           </thead>
           <tbody>
             {items.map((item) => (
-              <Row key={item.id} item={item} onUpdate={onUpdate} onDelete={onDelete} />
+              <Row key={item.id} item={item} onUpdate={onUpdate} onDelete={onDelete} aiOk={aiOk} />
             ))}
           </tbody>
         </table>

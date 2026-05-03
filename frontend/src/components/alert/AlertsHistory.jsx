@@ -52,6 +52,11 @@ export default function AlertsHistory({ alerts }) {
                       </span>
                     </div>
                     <p className="mt-1 text-sm text-gray-700 line-clamp-2">{a.message}</p>
+                    {a.why_now ? (
+                      <p className="mt-1.5 text-xs text-[#002FA7] bg-[#002FA7]/5 border-l-2 border-[#002FA7] pl-2 py-1 italic" data-testid={`why-now-${a.id}`}>
+                        ✦ {a.why_now}
+                      </p>
+                    ) : null}
                   </div>
                 </div>
                 <div className="text-right flex-shrink-0">

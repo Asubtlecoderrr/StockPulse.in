@@ -29,6 +29,12 @@ from twilio.base.exceptions import TwilioRestException
 from twilio.rest import Client as TwilioClient
 
 from nse_symbols import search_symbols
+from ai import (
+    ai_health,
+    generate_why_now,
+    generate_daily_brief,
+    score_sentiment,
+)
 
 # ---------------------------------------------------------------------------
 # Bootstrap
@@ -137,6 +143,7 @@ class AlertRecord(BaseModel):
     price: float
     message: str
     delivery_status: str  # "sent" | "mocked" | "failed"
+    why_now: Optional[str] = None
     sent_at: str
 
 
@@ -228,6 +235,26 @@ async def fetch_quote_details(symbol: str) -> Optional[dict]:
     except Exception as exc:
         logger.warning("fetch_quote_details failed for %s: %s", symbol, exc)
         return None
+
+
+async def fetch_news(symbol: str, limit: int = 6) -> list:
+    """Return a list of recent news headlines (strings) for a symbol."""
+    try:
+        ticker = yf.Ticker(symbol)
+        news = ticker.news or []
+        out = []
+        for item in news[:limit]:
+            # yfinance returns dicts like {"title": "..."} or nested under "content"
+            title = item.get("title")
+            if not title:
+                content = item.get("content") or {}
+                title = content.get("title") if isinstance(content, dict) else None
+            if title:
+                out.append(title.strip())
+        return out
+    except Exception as exc:
+        logger.warning("fetch_news failed for %s: %s", symbol, exc)
+        return []
 
 
 # ---------------------------------------------------------------------------
@@ -332,7 +359,23 @@ async def _update_watchlist_prices_and_fire_alerts(respect_market_hours: bool = 
                 pass
             else:
                 body = _format_message(item, current_price)
-                status = await _send_whatsapp(destination or "", body) if destination else "mocked"
+                # AI: why-now context (best-effort, never blocks)
+                why_now_text = None
+                try:
+                    headlines = await fetch_news(item["symbol"], limit=5)
+                    why_now_text = await generate_why_now(
+                        symbol=item["symbol"],
+                        name=item["name"],
+                        alert_type=item["alert_type"],
+                        threshold=item["threshold"],
+                        price=current_price,
+                        day_change_pct=price_info.get("day_change_pct"),
+                        headlines=headlines,
+                    )
+                except Exception as ex:
+                    logger.warning("why_now generation failed: %s", ex)
+                full_body = body if not why_now_text else f"{body}\n\n{why_now_text}"
+                status = await _send_whatsapp(destination or "", full_body) if destination else "mocked"
                 alert_doc = {
                     "id": str(uuid.uuid4()),
                     "watchlist_id": item["id"],
@@ -341,8 +384,9 @@ async def _update_watchlist_prices_and_fire_alerts(respect_market_hours: bool = 
                     "alert_type": item["alert_type"],
                     "threshold": item["threshold"],
                     "price": current_price,
-                    "message": body,
+                    "message": full_body,
                     "delivery_status": status,
+                    "why_now": why_now_text,
                     "sent_at": now_iso,
                 }
                 await db.alerts.insert_one(alert_doc)
@@ -372,6 +416,39 @@ async def scheduled_job():
     logger.info("Scheduled run complete: %s", summary)
 
 
+async def scheduled_daily_brief():
+    """Generate an AI market brief and dispatch via WhatsApp at 15:35 IST on weekdays."""
+    try:
+        items = await db.watchlist.find({}, {"_id": 0}).to_list(50)
+        if not items:
+            logger.info("Daily brief: empty watchlist, skipping.")
+            return
+        today_start_iso = now_ist().replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+        alerts_today = await db.alerts.count_documents({"sent_at": {"$gte": today_start_iso}})
+        text = await generate_daily_brief(items=items, alerts_today=alerts_today)
+        if not text:
+            logger.info("Daily brief: AI unavailable, skipping.")
+            return
+        settings_doc = await db.settings.find_one({"_id": "singleton"}) or {}
+        destination = settings_doc.get("destination_whatsapp")
+        body = f"📊 StockPulse · Daily Brief\n\n{text}"
+        if destination:
+            status = await _send_whatsapp(destination, body)
+            logger.info("Daily brief sent (%s)", status)
+        else:
+            logger.info("[MOCK DAILY BRIEF] %s", body)
+        # Persist for in-app view
+        await db.daily_briefs.insert_one({
+            "id": str(uuid.uuid4()),
+            "text": text,
+            "alerts_today": alerts_today,
+            "watchlist_count": len(items),
+            "created_at": now_ist().isoformat(),
+        })
+    except Exception as exc:
+        logger.warning("Daily brief job failed: %s", exc)
+
+
 # ---------------------------------------------------------------------------
 # FastAPI app
 # ---------------------------------------------------------------------------
@@ -382,6 +459,14 @@ async def lifespan(app: FastAPI):
         scheduled_job,
         CronTrigger(day_of_week="mon-fri", hour="9-15", minute="*/5", timezone=IST),
         id="price_check",
+        replace_existing=True,
+        max_instances=1,
+    )
+    # Daily brief at 15:35 IST, Mon-Fri
+    scheduler.add_job(
+        scheduled_daily_brief,
+        CronTrigger(day_of_week="mon-fri", hour=15, minute=35, timezone=IST),
+        id="daily_brief",
         replace_existing=True,
         max_instances=1,
     )
@@ -400,6 +485,64 @@ api = APIRouter(prefix="/api")
 @api.get("/health")
 async def health():
     return {"status": "ok", "twilio_configured": twilio_is_configured()}
+
+
+@api.get("/ai/health")
+async def ai_status():
+    return await ai_health()
+
+
+@api.get("/ai/sentiment/{symbol}")
+async def ai_sentiment(symbol: str, refresh: bool = False):
+    """Return cached or freshly-computed news sentiment for a symbol."""
+    cache_ttl_secs = 60 * 60  # 1 hour
+    now = now_ist()
+    cached = await db.sentiment_cache.find_one({"_id": symbol})
+    if cached and not refresh:
+        try:
+            fetched = datetime.fromisoformat(cached["fetched_at"])
+            if (now - fetched).total_seconds() < cache_ttl_secs:
+                return {k: v for k, v in cached.items() if k != "_id"}
+        except Exception:
+            pass
+    headlines = await fetch_news(symbol, limit=6)
+    # Try to enrich with name from watchlist or symbol list
+    name = symbol
+    wl = await db.watchlist.find_one({"symbol": symbol}, {"_id": 0, "name": 1})
+    if wl:
+        name = wl["name"]
+    result = await score_sentiment(symbol=symbol, name=name, headlines=headlines)
+    if result is None:
+        return {"symbol": symbol, "sentiment": "yellow", "score": 0.5, "summary": "AI unavailable.", "headlines": headlines, "fetched_at": now.isoformat(), "ai_ok": False}
+    doc = {
+        "_id": symbol,
+        "symbol": symbol,
+        "sentiment": result["sentiment"],
+        "score": result["score"],
+        "summary": result["summary"],
+        "headlines": headlines,
+        "fetched_at": now.isoformat(),
+        "ai_ok": True,
+    }
+    await db.sentiment_cache.update_one({"_id": symbol}, {"$set": doc}, upsert=True)
+    return {k: v for k, v in doc.items() if k != "_id"}
+
+
+@api.post("/ai/brief/preview")
+async def ai_brief_preview():
+    items = await db.watchlist.find({}, {"_id": 0}).to_list(50)
+    today_start_iso = now_ist().replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    alerts_today = await db.alerts.count_documents({"sent_at": {"$gte": today_start_iso}})
+    text = await generate_daily_brief(items=items, alerts_today=alerts_today)
+    if not text:
+        raise HTTPException(status_code=503, detail="AI unavailable. Is Ollama running with the configured model?")
+    return {"text": text, "watchlist_count": len(items), "alerts_today": alerts_today}
+
+
+@api.get("/ai/briefs")
+async def ai_briefs(limit: int = 10):
+    docs = await db.daily_briefs.find({}, {"_id": 0}).sort("created_at", -1).to_list(limit)
+    return docs
 
 
 @api.get("/market-status")

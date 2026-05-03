@@ -5,6 +5,7 @@ import SearchBar from "@/components/alert/SearchBar";
 import Watchlist from "@/components/alert/Watchlist";
 import AlertsHistory from "@/components/alert/AlertsHistory";
 import TwilioBanner from "@/components/alert/TwilioBanner";
+import DailyBriefCard from "@/components/alert/DailyBriefCard";
 import { toast } from "sonner";
 
 export default function Dashboard() {
@@ -12,20 +13,23 @@ export default function Dashboard() {
   const [watchlist, setWatchlist] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [settings, setSettings] = useState(null);
+  const [aiHealth, setAiHealth] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const loadAll = async () => {
     try {
-      const [ms, wl, al, se] = await Promise.all([
+      const [ms, wl, al, se, ai] = await Promise.all([
         endpoints.marketStatus(),
         endpoints.listWatchlist(),
         endpoints.listAlerts(20),
         endpoints.getSettings(),
+        endpoints.aiHealth().catch(() => null),
       ]);
       setMarketStatus(ms);
       setWatchlist(wl);
       setAlerts(al);
       setSettings(se);
+      setAiHealth(ai);
     } catch (e) {
       console.error(e);
       toast.error("Failed to load dashboard data");
@@ -109,6 +113,7 @@ export default function Dashboard() {
         marketStatus={marketStatus}
         onRefresh={handleRefresh}
         refreshing={refreshing}
+        aiHealth={aiHealth}
       />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
@@ -131,6 +136,10 @@ export default function Dashboard() {
 
         <TwilioBanner settings={settings} onSave={handleSaveSettings} />
 
+        <div className="mt-4">
+          <DailyBriefCard aiHealth={aiHealth} />
+        </div>
+
         <section className="mt-10">
           <SearchBar onAdd={handleAdd} />
         </section>
@@ -140,6 +149,7 @@ export default function Dashboard() {
             items={watchlist}
             onUpdate={handleUpdate}
             onDelete={handleDelete}
+            aiOk={!!(aiHealth?.reachable && aiHealth?.model_ready)}
           />
         </section>
 

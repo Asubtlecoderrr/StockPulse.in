@@ -21,4 +21,10 @@ export const endpoints = {
   listAlerts: (limit = 50) => api.get("/alerts", { params: { limit } }).then((r) => r.data),
   getSettings: () => api.get("/settings").then((r) => r.data),
   updateSettings: (payload) => api.put("/settings", payload).then((r) => r.data),
+  // AI
+  aiHealth: () => api.get("/ai/health").then((r) => r.data),
+  sentiment: (symbol, refresh = false) =>
+    api.get(`/ai/sentiment/${encodeURIComponent(symbol)}`, { params: { refresh } }).then((r) => r.data),
+  briefPreview: () => api.post("/ai/brief/preview").then((r) => r.data),
+  briefs: (limit = 10) => api.get("/ai/briefs", { params: { limit } }).then((r) => r.data),
 };
