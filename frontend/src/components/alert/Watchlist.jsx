@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { validateThreshold, toneClass, tonePillClass } from "@/lib/thresholdValidator";
 
 const formatINR = (n) =>
   n == null ? "—" : new Intl.NumberFormat("en-IN", { maximumFractionDigits: 2 }).format(n);
@@ -60,6 +61,28 @@ function Row({ item, onUpdate, onDelete }) {
   const meta = typeMeta[item.alert_type];
   const bareSymbol = item.symbol.replace(".NS", "").replace(".BO", "");
 
+  // Distance-to-trigger (always-visible, computed from current price)
+  const minimalQuote = item.current_price != null ? { price: item.current_price } : null;
+  const liveDistance = validateThreshold({
+    alertType: item.alert_type,
+    threshold: item.threshold,
+    quote: minimalQuote,
+    referencePrice: item.reference_price,
+  });
+  const distancePill = (minimalQuote && liveDistance.distanceLabel)
+    ? { label: liveDistance.distanceLabel, tone: liveDistance.tone }
+    : null;
+
+  // Edit-mode validation hint
+  const editValidation = editing
+    ? validateThreshold({
+        alertType,
+        threshold,
+        quote: minimalQuote,
+        referencePrice: item.reference_price,
+      })
+    : null;
+
   const save = async () => {
     const t = parseFloat(threshold);
     if (isNaN(t) || t <= 0) return;
@@ -105,14 +128,24 @@ function Row({ item, onUpdate, onDelete }) {
       </td>
       <td className="py-4 px-3 text-right">
         {editing ? (
-          <Input
-            data-testid={`edit-threshold-${bareSymbol}`}
-            type="number"
-            step="0.01"
-            value={threshold}
-            onChange={(e) => setThreshold(e.target.value)}
-            className="h-9 w-28 text-right rounded-sm border-gray-300 font-mono-tab text-sm ml-auto"
-          />
+          <div className="flex flex-col items-end gap-1">
+            <Input
+              data-testid={`edit-threshold-${bareSymbol}`}
+              type="number"
+              step="0.01"
+              value={threshold}
+              onChange={(e) => setThreshold(e.target.value)}
+              className="h-9 w-28 text-right rounded-sm border-gray-300 font-mono-tab text-sm"
+            />
+            {editValidation?.message ? (
+              <span
+                className={`text-[10px] font-mono-tab text-right max-w-[180px] ${toneClass[editValidation.tone]}`}
+                data-testid={`edit-hint-${bareSymbol}`}
+              >
+                {editValidation.message}
+              </span>
+            ) : null}
+          </div>
         ) : (
           <span className="font-mono-tab text-sm">
             {item.alert_type === "pct_drop" ? `${item.threshold}%` : `Rs. ${formatINR(item.threshold)}`}
@@ -128,12 +161,23 @@ function Row({ item, onUpdate, onDelete }) {
             <BellRing className="w-3 h-3" /> Triggered
           </span>
         ) : (
-          <span
-            className="inline-flex items-center gap-1.5 px-2 py-1 bg-[#F0FDF4] text-[#00C853] border border-[#00C853]/30 rounded-sm text-[10px] font-bold uppercase tracking-wider"
-            data-testid={`status-armed-${bareSymbol}`}
-          >
-            <span className="w-1.5 h-1.5 bg-[#00C853] rounded-full" /> Armed
-          </span>
+          <div className="flex flex-col items-end gap-1">
+            <span
+              className="inline-flex items-center gap-1.5 px-2 py-1 bg-[#F0FDF4] text-[#00C853] border border-[#00C853]/30 rounded-sm text-[10px] font-bold uppercase tracking-wider"
+              data-testid={`status-armed-${bareSymbol}`}
+            >
+              <span className="w-1.5 h-1.5 bg-[#00C853] rounded-full" /> Armed
+            </span>
+            {distancePill ? (
+              <span
+                className={`inline-flex items-center px-1.5 py-0.5 rounded-sm border text-[10px] font-mono-tab font-bold tracking-tight ${tonePillClass[distancePill.tone]}`}
+                data-testid={`distance-pill-${bareSymbol}`}
+                title="Distance to alert trigger"
+              >
+                {distancePill.label}
+              </span>
+            ) : null}
+          </div>
         )}
       </td>
       <td className="py-4 pl-3">

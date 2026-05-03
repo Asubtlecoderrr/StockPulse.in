@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { endpoints } from "@/lib/alertApi";
 import Sparkline from "@/components/alert/Sparkline";
+import { validateThreshold, toneClass } from "@/lib/thresholdValidator";
 
 const ALERT_TYPES = [
   { id: "below", label: "Price Below", hint: "Alert when price ≤ threshold" },
@@ -118,28 +119,11 @@ export default function AddAlertDialog({ open, onOpenChange, stock, onSubmit }) 
   const dayPositive = (quote?.day_change_pct ?? 0) >= 0;
   const chips = chipsFor(alertType, quote);
 
-  // Validation hint
-  let hint = ALERT_TYPES.find((t) => t.id === alertType)?.hint;
-  let hintTone = "text-gray-500";
-  const t = parseFloat(threshold);
-  if (!isNaN(t) && quote) {
-    if (alertType === "below" && t < quote.range_52w_low) {
-      hint = `Threshold is below 52W low (Rs.${formatINR(quote.range_52w_low)}) — may rarely trigger.`;
-      hintTone = "text-[#FF3B30]";
-    } else if (alertType === "below" && t >= quote.price) {
-      hint = `Threshold ≥ current price — alert will fire immediately.`;
-      hintTone = "text-[#b58500]";
-    } else if (alertType === "above" && t > quote.range_52w_high) {
-      hint = `Threshold is above 52W high (Rs.${formatINR(quote.range_52w_high)}) — may rarely trigger.`;
-      hintTone = "text-[#FF3B30]";
-    } else if (alertType === "above" && t <= quote.price) {
-      hint = `Threshold ≤ current price — alert will fire immediately.`;
-      hintTone = "text-[#b58500]";
-    } else if (alertType === "pct_drop" && (t <= 0 || t >= 50)) {
-      hint = `% drop should typically be 1-30%.`;
-      hintTone = "text-[#b58500]";
-    }
-  }
+  // Smart validation
+  const validation = validateThreshold({ alertType, threshold, quote });
+  const baseHint = ALERT_TYPES.find((tp) => tp.id === alertType)?.hint;
+  const hint = (threshold && quote) ? validation.message : baseHint;
+  const hintTone = (threshold && quote) ? toneClass[validation.tone] : "text-gray-500";
 
   const handleSubmit = async (e) => {
     e.preventDefault();
