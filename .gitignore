@@ -1,82 +1,38 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
-# IDE and editors
-.idea/
-.vscode/
-
-# Dependencies
-node_modules/
-/node_modules
-/.pnp
-.pnp.js
-.yarn/install-state.gz
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/versions
-
-# Testing
-/coverage
-
-# Next.js
-/.next/
-/out/
-next-env.d.ts
-*.tsbuildinfo
-
-# Production builds
-/build
-dist/
-dist
-
-# Environment files (comprehensive coverage)
-
-*token.json*
-*credentials.json*
-
-# Logs and debug files
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
-dump.rdb
-
-# System files
-.DS_Store
-*.pem
+# Environment files (NEVER commit secrets)
+.env
+.env.local
+.env.*.local
+backend/.env
+frontend/.env
 
 # Python
 __pycache__/
-*pyc*
-venv/
+*.py[cod]
+*$py.class
+*.egg-info/
 .venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
-# Development tools
-chainlit.md
-.chainlit
-.ipynb_checkpoints/
-.ac
+# Node / React
+node_modules/
+build/
+dist/
+.eslintcache
+yarn-error.log
+npm-debug.log
 
-# Deployment
-.vercel
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
 
-# Data and databases
-agenthub/agents/youtube/db
+# Logs
+*.log
 
-# Archive files and large assets
-**/*.zip
-**/*.tar.gz
-**/*.tar
-**/*.tgz
-*.pack
-*.deb
-*.dylib
-
-# Build caches
-.cache/
-
-memory/test_credentials.md
-
-# Mobile development
-android-sdk/
+# Test artifacts
+/test_reports/
+/coverage/
