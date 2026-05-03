@@ -1,0 +1,82 @@
+{
+  "theme": "Light",
+  "archetype": "Archetype 4: Swiss & High-Contrast",
+  "mood": "Authoritative, clear, function-first, precise.",
+  "typography": {
+    "heading_font": "Cabinet Grotesk",
+    "body_font": "Satoshi",
+    "mono_font": "JetBrains Mono",
+    "hierarchy": {
+      "h1": "text-4xl sm:text-5xl font-black tracking-tighter text-gray-900",
+      "h2": "text-2xl sm:text-3xl font-bold tracking-tight text-gray-900",
+      "h3": "text-xl font-medium tracking-tight text-gray-900",
+      "body": "text-sm sm:text-base text-gray-700 leading-relaxed font-sans",
+      "data_ticker": "text-sm sm:text-base font-mono font-bold tracking-tight",
+      "data_large": "text-2xl sm:text-3xl font-mono font-bold tracking-tighter",
+      "overline": "text-xs font-bold uppercase tracking-[0.2em] text-gray-500"
+    }
+  },
+  "colors": {
+    "background": "#FFFFFF",
+    "surface": "#F9FAFB",
+    "surface_alt": "#F3F4F6",
+    "text_primary": "#111827",
+    "text_secondary": "#4B5563",
+    "border": "#E5E7EB",
+    "primary": "#002FA7",
+    "primary_hover": "#002480",
+    "accent_red": "#FF3B30",
+    "accent_red_bg": "#FEF2F2",
+    "accent_green": "#00C853",
+    "accent_green_bg": "#F0FDF4",
+    "accent_yellow": "#FFCC00"
+  },
+  "layout_and_spacing": {
+    "container": "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8",
+    "grid_system": "grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6",
+    "card_padding": "p-4 sm:p-6",
+    "border_radius": "rounded-none sm:rounded-sm",
+    "shadows": "shadow-none",
+    "borders": "border border-gray-200"
+  },
+  "surface_strategies": {
+    "dashboard_cards": "Flat background (bg-white), 1px solid border (border-gray-200), zero shadow. Hover state: slight lift (-translate-y-0.5) and border-gray-300 transition-transform duration-200.",
+    "header": "Solid background (bg-white) with a hard bottom border (border-gray-200). Sticky top.",
+    "market_status": "Capsule shape (rounded-full). Open: bg-accent_green_bg text-accent_green with a pulsating dot. Closed: bg-gray-100 text-gray-600."
+  },
+  "components": {
+    "button_primary": "bg-[#002FA7] text-white hover:bg-[#002480] hover:text-white px-6 py-2.5 font-medium tracking-tight rounded-sm transition-colors",
+    "button_secondary": "bg-white text-gray-900 border border-gray-200 hover:bg-gray-50 px-6 py-2.5 font-medium tracking-tight rounded-sm transition-colors",
+    "inputs": "bg-white border-gray-200 rounded-sm focus:ring-2 focus:ring-[#002FA7]/20 focus:border-[#002FA7] text-sm",
+    "table": "w-full text-left border-collapse. th: uppercase, text-xs, font-bold, tracking-[0.1em], text-gray-500, py-3 border-b border-gray-200. td: py-4 border-b border-gray-100 font-mono text-sm",
+    "badge_positive": "bg-[#F0FDF4] text-[#00C853] px-2 py-1 text-xs font-mono font-bold rounded-sm border border-[#00C853]/20",
+    "badge_negative": "bg-[#FEF2F2] text-[#FF3B30] px-2 py-1 text-xs font-mono font-bold rounded-sm border border-[#FF3B30]/20"
+  },
+  "motion_and_interactions": {
+    "hover_states": "All interactive elements must explicitly change color or border on hover.",
+    "transitions": "Use transition-all duration-200 ease-in-out for buttons and links.",
+    "data_update": "When price updates, flash background briefly (green for up, red for down) using CSS animation."
+  },
+  "media": {
+    "image_urls": {
+      "onboarding_banner_bg": {
+        "url": "https://static.prod-images.emergentagent.com/jobs/4f01fa85-3b85-4e40-a161-749cc3ce7439/images/49e9b4c4091cbd811102648b933ca8cc6566bc541e05b1cd74dff3bc1908354b.png",
+        "description": "Abstract geometric background, swiss design, stark white and subtle grey with a signal red element. Use as background for the Twilio setup/onboarding banner with a bg-white/90 backdrop-blur overlay for readability."
+      }
+    },
+    "icons": {
+      "library": "lucide-react",
+      "usage": "Use sharp, clear icons. 16px or 20px size depending on context. 1.5 stroke width."
+    }
+  },
+  "specific_instructions_for_main_agent": [
+    "Install custom fonts using fontsource: `yarn add @fontsource/cabinet-grotesk @fontsource/satoshi @fontsource/jetbrains-mono` and import in index.css or main entry file.",
+    "Implement the 'Control Room' grid for the dashboard layout. Utilize every pixel. Eliminate empty card bottoms by ensuring heights stretch properly.",
+    "For the Watchlist, use a dense table or bento grid list where Tickers and Prices utilize the JetBrains Mono font for tabular alignment. Always right-align numeric data columns.",
+    "Avoid the default 'Vercel-look'. Remove soft shadows from Shadcn components and apply strict 1px solid borders with 0-4px (rounded-none to rounded-sm) border radius.",
+    "The Market Status indicator should be prominently placed in the Header or Top Summary section. Use a pulsing CSS animation for the 'Live' dot when the market is open.",
+    "The Twilio onboarding banner must use the provided 'onboarding_banner_bg' image. Add a semi-transparent overlay (e.g., bg-white/90) so text remains completely legible against it.",
+    "Ensure all interactive elements have `data-testid` attributes (kebab-case, role-based).",
+    "Data Density: Ensure enough contrast for values. Avoid wrapping numbers. Group related stats closely."
+  ]
+}
