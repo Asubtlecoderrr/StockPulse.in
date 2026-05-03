@@ -1,10 +1,12 @@
 import { useState, useEffect } from "react";
+import { RefreshCw, Loader2, TrendingUp, TrendingDown } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { endpoints } from "@/lib/alertApi";
 
 const ALERT_TYPES = [
   { id: "below", label: "Price Below", hint: "Alert when price <= threshold" },
@@ -12,21 +14,48 @@ const ALERT_TYPES = [
   { id: "pct_drop", label: "% Drop", hint: "Alert when price drops X% from add-time" },
 ];
 
+const formatINR = (n) =>
+  n == null ? "—" : new Intl.NumberFormat("en-IN", { maximumFractionDigits: 2 }).format(n);
+
 export default function AddAlertDialog({ open, onOpenChange, stock, onSubmit }) {
   const [alertType, setAlertType] = useState("below");
   const [threshold, setThreshold] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [quote, setQuote] = useState(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [quoteError, setQuoteError] = useState(null);
+
+  const loadQuote = async () => {
+    if (!stock) return;
+    setQuoteLoading(true);
+    setQuoteError(null);
+    try {
+      const data = await endpoints.quote(stock.symbol);
+      setQuote(data);
+    } catch (e) {
+      setQuoteError("Could not fetch live price");
+      setQuote(null);
+    } finally {
+      setQuoteLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!open) {
       setAlertType("below");
       setThreshold("");
       setSubmitting(false);
+      setQuote(null);
+      setQuoteError(null);
+      return;
     }
-  }, [open]);
+    if (stock) loadQuote();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, stock?.symbol]);
 
   if (!stock) return null;
   const bareSymbol = stock.symbol.replace(".NS", "");
+  const dayPositive = (quote?.day_change_pct ?? 0) >= 0;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -58,10 +87,61 @@ export default function AddAlertDialog({ open, onOpenChange, stock, onSubmit }) 
               {stock.name} · <span className="font-mono-tab text-xs">{stock.exchange || "NSE"}</span>
             </DialogDescription>
           </DialogHeader>
+
+          {/* Live Price Card */}
+          <div
+            className="mt-4 border border-gray-200 rounded-sm bg-gray-50/60 px-4 py-3 flex items-center justify-between"
+            data-testid="add-alert-quote"
+          >
+            <div className="flex flex-col">
+              <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500">
+                Live Price
+              </span>
+              {quoteLoading ? (
+                <span className="font-mono-tab text-xl font-bold text-gray-400 mt-1 flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin" /> fetching…
+                </span>
+              ) : quoteError ? (
+                <span className="text-xs text-[#FF3B30] mt-1">{quoteError}</span>
+              ) : quote ? (
+                <div className="flex items-baseline gap-3 mt-0.5">
+                  <span
+                    className="font-mono-tab text-2xl font-extrabold tracking-tight text-[#111827]"
+                    data-testid="add-alert-current-price"
+                  >
+                    Rs. {formatINR(quote.price)}
+                  </span>
+                  <span
+                    className={`inline-flex items-center gap-1 text-xs font-mono-tab font-bold ${
+                      dayPositive ? "text-[#00C853]" : "text-[#FF3B30]"
+                    }`}
+                  >
+                    {dayPositive ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                    {dayPositive ? "+" : ""}{(quote.day_change_pct ?? 0).toFixed(2)}%
+                  </span>
+                </div>
+              ) : null}
+              {quote ? (
+                <span className="text-[10px] font-mono-tab text-gray-400 mt-1">
+                  Prev close · Rs. {formatINR(quote.previous_close)}
+                </span>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              onClick={loadQuote}
+              disabled={quoteLoading}
+              className="w-9 h-9 inline-flex items-center justify-center border border-gray-200 rounded-sm bg-white hover:border-[#002FA7] hover:text-[#002FA7] text-gray-500 transition-colors"
+              data-testid="quote-refresh"
+              title="Refresh price"
+            >
+              <RefreshCw className={`w-4 h-4 ${quoteLoading ? "animate-spin" : ""}`} />
+            </button>
+          </div>
         </div>
 
         <form onSubmit={handleSubmit}>
-          <div className="px-6 py-5 space-y-5 border-t border-gray-100 mt-4">
+          <div className="px-6 py-5 space-y-5 border-t border-gray-100 mt-5">
             <div>
               <Label className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500">
                 Alert Type

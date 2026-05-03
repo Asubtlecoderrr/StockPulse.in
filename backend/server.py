@@ -372,6 +372,15 @@ async def search(q: str = ""):
     return {"query": q, "results": results}
 
 
+# -------------------- Quote (live price lookup) ---------------------------
+@api.get("/quote")
+async def quote(symbol: str):
+    price_info = await fetch_price(symbol)
+    if price_info is None:
+        raise HTTPException(status_code=502, detail="Could not fetch price for this symbol")
+    return {"symbol": symbol, **price_info}
+
+
 # -------------------- Watchlist CRUD --------------------------------------
 @api.get("/watchlist", response_model=List[WatchlistItem])
 async def list_watchlist():

@@ -12,6 +12,7 @@ export const endpoints = {
   health: () => api.get("/health").then((r) => r.data),
   marketStatus: () => api.get("/market-status").then((r) => r.data),
   search: (q) => api.get("/search", { params: { q } }).then((r) => r.data),
+  quote: (symbol) => api.get("/quote", { params: { symbol } }).then((r) => r.data),
   listWatchlist: () => api.get("/watchlist").then((r) => r.data),
   addWatchlist: (payload) => api.post("/watchlist", payload).then((r) => r.data),
   updateWatchlist: (id, payload) => api.patch(`/watchlist/${id}`, payload).then((r) => r.data),
