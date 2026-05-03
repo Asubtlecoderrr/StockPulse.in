@@ -180,6 +180,56 @@ async def fetch_price(symbol: str) -> Optional[dict]:
         return None
 
 
+async def fetch_quote_details(symbol: str) -> Optional[dict]:
+    """Fetch enriched quote: price, day/30d/52w ranges, 30d sparkline."""
+    try:
+        ticker = yf.Ticker(symbol)
+        hist = ticker.history(period="1y", interval="1d")
+        if hist is None or hist.empty:
+            return None
+        last_close = float(hist["Close"].iloc[-1])
+        prev_close = float(hist["Close"].iloc[-2]) if len(hist) > 1 else last_close
+
+        # Intraday for live price + today's day low/high
+        day_low = day_high = None
+        try:
+            intraday = ticker.history(period="1d", interval="5m")
+            if intraday is not None and not intraday.empty:
+                last_close = float(intraday["Close"].iloc[-1])
+                day_low = float(intraday["Low"].min())
+                day_high = float(intraday["High"].max())
+        except Exception:
+            pass
+        if day_low is None:
+            day_low = float(hist["Low"].iloc[-1])
+            day_high = float(hist["High"].iloc[-1])
+
+        last_30 = hist.tail(30)
+        last_30_closes = [round(float(v), 2) for v in last_30["Close"].tolist()]
+        range_30d_low = float(last_30["Low"].min())
+        range_30d_high = float(last_30["High"].max())
+        range_52w_low = float(hist["Low"].min())
+        range_52w_high = float(hist["High"].max())
+
+        change_pct = ((last_close - prev_close) / prev_close * 100) if prev_close else 0.0
+        return {
+            "symbol": symbol,
+            "price": round(last_close, 2),
+            "previous_close": round(prev_close, 2),
+            "day_change_pct": round(change_pct, 2),
+            "day_low": round(day_low, 2),
+            "day_high": round(day_high, 2),
+            "range_30d_low": round(range_30d_low, 2),
+            "range_30d_high": round(range_30d_high, 2),
+            "range_52w_low": round(range_52w_low, 2),
+            "range_52w_high": round(range_52w_high, 2),
+            "sparkline": last_30_closes,
+        }
+    except Exception as exc:
+        logger.warning("fetch_quote_details failed for %s: %s", symbol, exc)
+        return None
+
+
 # ---------------------------------------------------------------------------
 # Alert evaluation
 # ---------------------------------------------------------------------------
@@ -375,10 +425,10 @@ async def search(q: str = ""):
 # -------------------- Quote (live price lookup) ---------------------------
 @api.get("/quote")
 async def quote(symbol: str):
-    price_info = await fetch_price(symbol)
-    if price_info is None:
+    details = await fetch_quote_details(symbol)
+    if details is None:
         raise HTTPException(status_code=502, detail="Could not fetch price for this symbol")
-    return {"symbol": symbol, **price_info}
+    return details
 
 
 # -------------------- Watchlist CRUD --------------------------------------
