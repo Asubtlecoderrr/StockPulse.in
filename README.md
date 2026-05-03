@@ -17,6 +17,10 @@ A self-hosted, single-user web app that lets you watch Indian stocks/ETFs and ge
 - 🔁 Manual **Refresh** button bypasses the time-gate for ad-hoc checks
 - 📲 WhatsApp delivery via Twilio (with **MOCK mode** when keys are absent — alerts log to console)
 - 📜 Alert history log, distance-to-trigger pills, price flash animations, IST clock
+- 🧠 **AI features (local Llama via Ollama)** — see [section 7 below](#7-optional-ai-features-with-ollama):
+  - **Why-now explainer** — every fired alert is enriched with a 1–2 sentence catalyst from recent news + price action
+  - **Daily Market Brief** — AI-written 3-line summary at 15:35 IST sent to WhatsApp
+  - **News sentiment chip** per watchlist row (🟢 POS / 🟡 NEU / 🔴 NEG) with tooltip + headlines
 
 ---
 
@@ -25,8 +29,9 @@ A self-hosted, single-user web app that lets you watch Indian stocks/ETFs and ge
 | Layer | Tech |
 |---|---|
 | Backend | FastAPI 0.110, Motor (async MongoDB), APScheduler 3.11 |
-| Data | yfinance 1.3 (Yahoo Finance) |
+| Data | yfinance 1.3 (Yahoo Finance) — prices + news headlines |
 | Alerts | Twilio Python SDK 9.x — WhatsApp Sandbox / Production |
+| AI | Ollama (local Llama 3.1 8B) — runs on `localhost:11434`, optional |
 | Frontend | React 19, Tailwind, shadcn/ui, lucide-react |
 | Fonts | Bricolage Grotesque · Plus Jakarta Sans · JetBrains Mono |
 | DB | MongoDB |
@@ -40,15 +45,18 @@ A self-hosted, single-user web app that lets you watch Indian stocks/ETFs and ge
 ├── backend/
 │   ├── server.py            # FastAPI app, routes, scheduler, Twilio helpers
 │   ├── nse_symbols.py       # Curated NSE/ETF symbol list + search()
+│   ├── ai.py                # Ollama client + Why-now / Daily Brief / Sentiment helpers
 │   ├── requirements.txt     # Python deps
-│   └── .env                 # Local environment (not committed)
+│   ├── .env                 # Local environment (not committed)
+│   └── .env.example         # Template
 ├── frontend/
 │   ├── package.json
 │   └── src/
 │       ├── App.js
 │       ├── pages/Dashboard.jsx
 │       ├── components/alert/        # Header, SearchBar, Watchlist, AddAlertDialog,
-│       │                            # Sparkline, TwilioBanner, AlertsHistory
+│       │                            # Sparkline, TwilioBanner, AlertsHistory,
+│       │                            # DailyBriefCard, SentimentChip
 │       ├── lib/alertApi.js          # axios wrapper
 │       └── lib/thresholdValidator.js
 └── README.md
@@ -128,6 +136,11 @@ CORS_ORIGINS="http://localhost:3000"
 TWILIO_ACCOUNT_SID=""
 TWILIO_AUTH_TOKEN=""
 TWILIO_WHATSAPP_FROM=""
+
+# Ollama AI features (Why-now, Daily Brief, Sentiment) — set AI_ENABLED=false to disable
+OLLAMA_HOST="http://localhost:11434"
+OLLAMA_MODEL="llama3.1:8b"
+AI_ENABLED="true"
 ```
 
 > If you used Atlas in step 2, set `MONGO_URL="mongodb+srv://USER:PASS@cluster0.xxxxx.mongodb.net"`.
@@ -162,7 +175,84 @@ You can skip this and run with mocked alerts. To go live:
 
 ---
 
-## 5. Run the App
+## 5. (Optional) AI features with Ollama
+
+The app ships with three AI features — all run **locally on your machine** via [Ollama](https://ollama.com), so:
+- 🔒 No data leaves your laptop
+- 💸 Zero API costs
+- 🧠 Powered by **Llama 3.1 8B** by default (≈ 4.7 GB on disk)
+
+If Ollama isn't running the app keeps working — AI features simply show *"AI offline"* states.
+
+### 7a. Install Ollama
+
+| OS | Command |
+|---|---|
+| macOS / Linux | `curl -fsSL https://ollama.com/install.sh \| sh` |
+| Windows | Download installer from <https://ollama.com/download> |
+| Docker | `docker run -d -p 11434:11434 -v ollama:/root/.ollama --name ollama ollama/ollama` |
+
+### 7b. Pull the model & start the server
+
+```bash
+# One-time download (~4.7 GB)
+ollama pull llama3.1:8b
+
+# Start the local API server (runs on http://localhost:11434)
+ollama serve
+```
+
+Verify it's reachable:
+```bash
+curl http://localhost:11434/api/tags
+# Should return JSON listing 'llama3.1:8b'
+```
+
+### 7c. Configure the app
+
+Already in `backend/.env` from step 3a:
+```env
+OLLAMA_HOST="http://localhost:11434"
+OLLAMA_MODEL="llama3.1:8b"
+AI_ENABLED="true"
+```
+
+> **Want a smaller model?** `ollama pull llama3.2:3b` (~2 GB), then change `OLLAMA_MODEL="llama3.2:3b"`. Quality drops a bit, speed roughly doubles. Set `AI_ENABLED="false"` to turn the features off entirely.
+
+### 7d. Restart the backend
+
+```bash
+# In your backend terminal: Ctrl+C, then re-run
+uvicorn server:app --host 0.0.0.0 --port 8001 --reload
+```
+
+You should see `AI` light up in the header (Klein-Blue pill instead of grey "AI OFF"). Sentiment chips on each watchlist row turn green/yellow/red within a few seconds.
+
+### What each AI feature does
+
+| Feature | Trigger | Output |
+|---|---|---|
+| **Why-now explainer** | Whenever an alert fires | A 1–2 sentence catalyst note based on recent yfinance headlines + price action. Appended to the WhatsApp message and shown italicized in the in-app Alert Log. |
+| **Daily Market Brief** | Auto at 15:35 IST Mon–Fri (or click Generate manually) | 3-line summary of today's watchlist movers + outlook. Sent to WhatsApp + persisted at `/api/ai/briefs`. |
+| **Sentiment chip** | On every watchlist row, refreshed hourly | 🟢 POS / 🟡 NEU / 🔴 NEG dot with hover tooltip showing AI summary + 2 latest headlines. Cached for 1h to keep Ollama load low. |
+
+### AI endpoints
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/ai/health` | Probe Ollama + check model is pulled |
+| GET | `/api/ai/sentiment/{symbol}` | Cached sentiment (add `?refresh=true` to bypass cache) |
+| POST | `/api/ai/brief/preview` | Generate today's daily brief on-demand |
+| GET | `/api/ai/briefs` | Recent persisted briefs |
+
+### Performance notes
+- First call after `ollama serve` is slower (model loads into RAM).
+- Llama 3.1 8B uses **~6 GB RAM** while running. Keep at least 8 GB free.
+- Apple Silicon / Nvidia GPU: throughput ~30–80 tok/s. CPU-only: 5–15 tok/s — still usable for these short prompts.
+
+---
+
+## 6. Run the App
 
 Open **two terminal tabs**.
 
@@ -194,7 +284,7 @@ Opens <http://localhost:3000> automatically.
 
 ---
 
-## 6. Try It
+## 7. Try It
 
 1. Search for a symbol (e.g. `RELIANCE`) → click the result
 2. The dialog shows the live price, 30-day sparkline, and Day/30D/52W range bars
@@ -221,6 +311,10 @@ Opens <http://localhost:3000> automatically.
 | GET | `/api/alerts` | recent alert log |
 | GET | `/api/settings` | get destination number + twilio status |
 | PUT | `/api/settings` | save destination WhatsApp number |
+| GET | `/api/ai/health` | Ollama + model availability |
+| GET | `/api/ai/sentiment/{symbol}` | Cached news sentiment for a symbol |
+| POST | `/api/ai/brief/preview` | Generate daily brief on-demand |
+| GET | `/api/ai/briefs` | Recent persisted daily briefs |
 
 Full schema: <http://localhost:8001/docs>
 
@@ -237,6 +331,9 @@ Full schema: <http://localhost:8001/docs>
 | WhatsApp not arriving | a) Twilio keys saved? b) You opted-in to the Sandbox keyword? c) Check `backend` stdout for `[MOCK WHATSAPP]` lines |
 | `409 Same symbol + alert type already exists` | You already have that exact alert; edit or delete it first |
 | yfinance returns `None` for a symbol | Yahoo rate-limit — wait 30s and retry |
+| AI pill stuck on "AI OFF" | a) `ollama serve` running? b) `curl localhost:11434/api/tags` works? c) Model name in `.env` matches one of the listed tags? |
+| Sentiment chips spinning forever | First Llama call is slow — model is loading into RAM. Wait 10–20 s. |
+| Daily brief never sends | a) Did the 15:35 IST cron actually fire (check backend logs)? b) WhatsApp number set? c) Try `/api/ai/brief/preview` manually first |
 
 ---
 
