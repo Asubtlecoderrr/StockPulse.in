@@ -27,7 +27,7 @@ export function validateThreshold({ alertType, threshold, quote, referencePrice 
     const distance = ((price - t) / price) * 100; // +ve means price still above threshold
     const willFire = price <= t;
     let tone = "ok";
-    let message = `Distance to trigger · ${fmtPct(-Math.abs(distance))} (price needs to drop ${distance.toFixed(2)}%).`;
+    let message = "";
     if (willFire) {
       tone = "fires";
       message = `Threshold ≥ current price — alert will fire immediately.`;
@@ -45,7 +45,7 @@ export function validateThreshold({ alertType, threshold, quote, referencePrice 
     const distance = ((t - price) / price) * 100;
     const willFire = price >= t;
     let tone = "ok";
-    let message = `Distance to trigger · +${distance.toFixed(2)}% (price needs to rise ${distance.toFixed(2)}%).`;
+    let message = "";
     if (willFire) {
       tone = "fires";
       message = `Threshold ≤ current price — alert will fire immediately.`;
@@ -65,7 +65,7 @@ export function validateThreshold({ alertType, threshold, quote, referencePrice 
     const distance = t - dropFromRef; // remaining drop% to trigger
     const willFire = dropFromRef >= t;
     let tone = "ok";
-    let message = `Already dropped ${dropFromRef.toFixed(2)}% from ₹${fmt(ref)}. Need ${distance.toFixed(2)}% more.`;
+    let message = "";
     if (willFire) {
       tone = "fires";
       message = `Already dropped ${dropFromRef.toFixed(2)}% — alert will fire immediately.`;

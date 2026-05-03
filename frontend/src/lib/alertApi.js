@@ -21,7 +21,4 @@ export const endpoints = {
   listAlerts: (limit = 50) => api.get("/alerts", { params: { limit } }).then((r) => r.data),
   getSettings: () => api.get("/settings").then((r) => r.data),
   updateSettings: (payload) => api.put("/settings", payload).then((r) => r.data),
-  updateTelegram: (payload) => api.put("/settings/telegram", payload).then((r) => r.data),
-  clearTelegram: () => api.delete("/settings/telegram").then((r) => r.data),
-  testTelegram: () => api.post("/settings/telegram/test").then((r) => r.data),
 };

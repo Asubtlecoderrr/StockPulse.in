@@ -5,7 +5,6 @@ import SearchBar from "@/components/alert/SearchBar";
 import Watchlist from "@/components/alert/Watchlist";
 import AlertsHistory from "@/components/alert/AlertsHistory";
 import TwilioBanner from "@/components/alert/TwilioBanner";
-import TelegramCard from "@/components/alert/TelegramCard";
 import { toast } from "sonner";
 
 export default function Dashboard() {
@@ -131,10 +130,6 @@ export default function Dashboard() {
         </section>
 
         <TwilioBanner settings={settings} onSave={handleSaveSettings} />
-
-        <div className="mt-4">
-          <TelegramCard settings={settings} onChanged={setSettings} />
-        </div>
 
         <section className="mt-10">
           <SearchBar onAdd={handleAdd} />
