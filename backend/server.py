@@ -53,6 +53,12 @@ db = mongo_client[os.environ["DB_NAME"]]
 TWILIO_SID = os.environ.get("TWILIO_ACCOUNT_SID", "").strip()
 TWILIO_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN", "").strip()
 TWILIO_FROM = os.environ.get("TWILIO_WHATSAPP_FROM", "").strip()
+TELEGRAM_BOT_TOKEN_ENV = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+
+
+def telegram_token_from_settings(settings_doc: dict) -> str:
+    """Token resolution order: settings doc > env var. Returns '' if neither."""
+    return (settings_doc or {}).get("telegram_bot_token") or TELEGRAM_BOT_TOKEN_ENV
 
 
 def twilio_is_configured() -> bool:
@@ -136,18 +142,26 @@ class AlertRecord(BaseModel):
     threshold: float
     price: float
     message: str
-    delivery_status: str  # "sent" | "mocked" | "failed"
+    delivery_status: str  # overall: "sent" | "mocked" | "failed" | "none"
+    channels: List[dict] = Field(default_factory=list)  # [{"channel": "whatsapp"|"telegram", "status": "sent"|"mocked"|"failed"}]
     sent_at: str
 
 
 class Settings(BaseModel):
     destination_whatsapp: Optional[str] = None
+    telegram_chat_id: Optional[str] = None
+    telegram_bot_configured: bool = False
     twilio_configured: bool = False
     updated_at: Optional[str] = None
 
 
 class SettingsUpdate(BaseModel):
     destination_whatsapp: str
+
+
+class TelegramSettingsUpdate(BaseModel):
+    bot_token: Optional[str] = None  # if provided, stored in DB
+    chat_id: str
 
 
 # ---------------------------------------------------------------------------
@@ -293,6 +307,49 @@ async def _send_whatsapp(to_number: str, body: str) -> str:
         return "failed"
 
 
+async def _send_telegram(bot_token: str, chat_id: str, body: str) -> str:
+    """Send a Telegram message. Returns delivery status string."""
+    if not bot_token or not chat_id:
+        return "skipped"
+    try:
+        import httpx
+        url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.post(url, json={"chat_id": chat_id, "text": body, "parse_mode": "HTML"})
+        if r.status_code == 200 and r.json().get("ok"):
+            return "sent"
+        logger.error("Telegram send failed: %s %s", r.status_code, r.text[:200])
+        return "failed"
+    except Exception as exc:
+        logger.error("Telegram send exception: %s", exc)
+        return "failed"
+
+
+def _format_telegram_message(item: dict, current_price: float) -> str:
+    """HTML-formatted message for Telegram."""
+    symbol = item["symbol"].replace(".NS", "").replace(".BO", "")
+    atype = item["alert_type"]
+    threshold = item["threshold"]
+    if atype == "below":
+        return (
+            f"🔔 <b>{symbol}</b> dropped below ₹{threshold}\n"
+            f"Current: <b>₹{current_price}</b>"
+        )
+    if atype == "above":
+        return (
+            f"🔔 <b>{symbol}</b> rose above ₹{threshold}\n"
+            f"Current: <b>₹{current_price}</b>"
+        )
+    if atype == "pct_drop":
+        ref = item.get("reference_price") or current_price
+        drop_pct = (ref - current_price) / ref * 100
+        return (
+            f"🔔 <b>{symbol}</b> dropped {drop_pct:.2f}% from ₹{ref}\n"
+            f"Threshold: {threshold}% · Current: <b>₹{current_price}</b>"
+        )
+    return f"🔔 <b>{symbol}</b> · ₹{current_price}"
+
+
 async def _update_watchlist_prices_and_fire_alerts(respect_market_hours: bool = True) -> dict:
     """Refresh prices for all watchlist items and dispatch alerts as needed."""
     summary = {"updated": 0, "alerts_sent": 0, "alerts_reset": 0, "errors": 0}
@@ -302,6 +359,8 @@ async def _update_watchlist_prices_and_fire_alerts(respect_market_hours: bool = 
 
     settings_doc = await db.settings.find_one({"_id": "singleton"}) or {}
     destination = settings_doc.get("destination_whatsapp")
+    tg_token = telegram_token_from_settings(settings_doc)
+    tg_chat = settings_doc.get("telegram_chat_id")
 
     now_iso = now_ist().isoformat()
     market_open = is_market_open()
@@ -332,7 +391,25 @@ async def _update_watchlist_prices_and_fire_alerts(respect_market_hours: bool = 
                 pass
             else:
                 body = _format_message(item, current_price)
-                status = await _send_whatsapp(destination or "", body) if destination else "mocked"
+                tg_body = _format_telegram_message(item, current_price)
+                channels = []
+                if destination:
+                    wa_status = await _send_whatsapp(destination, body)
+                    channels.append({"channel": "whatsapp", "status": wa_status})
+                if tg_token and tg_chat:
+                    tg_status = await _send_telegram(tg_token, tg_chat, tg_body)
+                    channels.append({"channel": "telegram", "status": tg_status})
+                if not channels:
+                    channels.append({"channel": "none", "status": "mocked"})
+                statuses = [c["status"] for c in channels]
+                if "sent" in statuses:
+                    overall = "sent"
+                elif "mocked" in statuses:
+                    overall = "mocked"
+                elif all(s == "failed" for s in statuses):
+                    overall = "failed"
+                else:
+                    overall = "partial"
                 alert_doc = {
                     "id": str(uuid.uuid4()),
                     "watchlist_id": item["id"],
@@ -342,7 +419,8 @@ async def _update_watchlist_prices_and_fire_alerts(respect_market_hours: bool = 
                     "threshold": item["threshold"],
                     "price": current_price,
                     "message": body,
-                    "delivery_status": status,
+                    "delivery_status": overall,
+                    "channels": channels,
                     "sent_at": now_iso,
                 }
                 await db.alerts.insert_one(alert_doc)
@@ -515,8 +593,11 @@ async def list_alerts(limit: int = 50):
 @api.get("/settings", response_model=Settings)
 async def get_settings():
     doc = await db.settings.find_one({"_id": "singleton"}) or {}
+    tg_token = telegram_token_from_settings(doc)
     return {
         "destination_whatsapp": doc.get("destination_whatsapp"),
+        "telegram_chat_id": doc.get("telegram_chat_id"),
+        "telegram_bot_configured": bool(tg_token and doc.get("telegram_chat_id")),
         "twilio_configured": twilio_is_configured(),
         "updated_at": doc.get("updated_at"),
     }
@@ -533,11 +614,43 @@ async def update_settings(payload: SettingsUpdate):
         {"$set": {"destination_whatsapp": number, "updated_at": now_iso}},
         upsert=True,
     )
-    return {
-        "destination_whatsapp": number,
-        "twilio_configured": twilio_is_configured(),
-        "updated_at": now_iso,
-    }
+    return await get_settings()
+
+
+@api.put("/settings/telegram", response_model=Settings)
+async def update_telegram_settings(payload: TelegramSettingsUpdate):
+    chat_id = payload.chat_id.strip()
+    if not chat_id:
+        raise HTTPException(status_code=400, detail="chat_id is required")
+    update_set = {"telegram_chat_id": chat_id, "updated_at": now_ist().isoformat()}
+    if payload.bot_token is not None:
+        update_set["telegram_bot_token"] = payload.bot_token.strip()
+    await db.settings.update_one({"_id": "singleton"}, {"$set": update_set}, upsert=True)
+    return await get_settings()
+
+
+@api.delete("/settings/telegram", response_model=Settings)
+async def clear_telegram_settings():
+    await db.settings.update_one(
+        {"_id": "singleton"},
+        {"$unset": {"telegram_bot_token": "", "telegram_chat_id": ""}, "$set": {"updated_at": now_ist().isoformat()}},
+        upsert=True,
+    )
+    return await get_settings()
+
+
+@api.post("/settings/telegram/test")
+async def telegram_test():
+    doc = await db.settings.find_one({"_id": "singleton"}) or {}
+    token = telegram_token_from_settings(doc)
+    chat_id = doc.get("telegram_chat_id")
+    if not token or not chat_id:
+        raise HTTPException(status_code=400, detail="Telegram not configured. Save bot token + chat id first.")
+    body = "✅ <b>StockPulse.in</b> connected. You'll get alerts here when your thresholds are crossed."
+    status = await _send_telegram(token, chat_id, body)
+    if status != "sent":
+        raise HTTPException(status_code=502, detail=f"Telegram test failed (status={status}). Check token + chat id.")
+    return {"status": status}
 
 
 app.include_router(api)
